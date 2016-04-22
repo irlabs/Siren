@@ -114,6 +114,9 @@ private enum SirenErrorCode: Int {
     case AppStoreVersionNumberFailure
     case AppStoreVersionArrayFailure
     case AppStoreAppIdFailure
+    case CustomDataRetrievalFailure
+    case CustomJSONParsingFailure
+    case CustomDataHasNoVersions
 }
 
 /**
@@ -265,6 +268,29 @@ public final class Siren: NSObject {
     public var countryCode: String?
     
     /**
+        The custom URL to the (json) version file.
+     
+        The version file is expected to contain the minimum required version and the version from which a notification should be presented.
+
+        Example json:
+         {
+             "notice": "2.0.1",
+             "minimal": "2.0"
+         }
+        
+        This json contains two keys: *notice* and *minimal*. Based on these versions and the current version of the app
+        it will behave as follows:
+            - if the current version is older than the minimal version: display an alert which requires an update
+            - if the current version is the notice version or older: display an alert with two button: next time and update
+            - if the current version is newer than the notice version: do nothing
+            - if the json file was empty: do nothing
+     
+        If the customVersionFileURLPath is provided, then it will use this json file to check the current version against. 
+        If it is not provided it will check the version on iTunes App Store.
+    */
+    public var customVersionFileURLPath: String?
+    
+    /**
         Overrides the default localization of a user's device when presenting the update message and button titles in the alert.
     
         See the SirenLanguageType enum for more details.
@@ -282,6 +308,8 @@ public final class Siren: NSObject {
     public private(set) var currentAppStoreVersion: String?
 
     // Private
+    private var requiredMinimalVersion: String?
+    private var noticeNewerFromVersion: String?
     private var lastVersionCheckPerformedOnDate: NSDate?
     private var updaterWindow: UIWindow?
 
@@ -330,6 +358,16 @@ public final class Siren: NSObject {
     
     private func performVersionCheck() {
         
+        // If the customVersionFileURLPath is provided, check that json for the version. Otherwise use the App Store
+        if let customVersionFileURLPath = customVersionFileURLPath {
+            performCustomRequest(customVersionFileURLPath)
+        } else {
+            performAppStoreRequest()
+        }
+    }
+    
+    private func performAppStoreRequest() {
+        
         // Create Request
         do {
             let url = try iTunesURLFromString()
@@ -364,7 +402,7 @@ public final class Siren: NSObject {
                             self.printMessage("JSON results: \(appData)")
 
                             // Process Results (e.g., extract current version that is available on the AppStore)
-                            self.processVersionCheckResults(appData)
+                            self.processAppStoreVersionResults(appData)
 
                         }
 
@@ -382,8 +420,57 @@ public final class Siren: NSObject {
         }
 
     }
-    
-    private func processVersionCheckResults(lookupResults: [String: AnyObject]) {
+
+    private func performCustomRequest(customVersionFileURL: String) {
+        
+        // Create Request
+        guard let url = NSURL(string: customVersionFileURL) else {
+            self.postError(.MalformedURL, underlyingError: nil)
+            return
+        }
+        
+        let request = NSURLRequest(URL: url, cachePolicy: .ReloadIgnoringLocalCacheData, timeoutInterval: 60.0)
+        
+        // Perform Request
+        let session = NSURLSession.sharedSession()
+        let task = session.dataTaskWithRequest(request, completionHandler: { [unowned self] (data, response, error) in
+            
+            if let error = error {
+                self.postError(.CustomDataRetrievalFailure, underlyingError: error)
+            } else {
+                
+                guard let data = data else {
+                    self.postError(.CustomDataRetrievalFailure, underlyingError: nil)
+                    return
+                }
+                
+                // Convert JSON data to Swift Dictionary of type [String: AnyObject]
+                do {
+                    
+                    let jsonData = try NSJSONSerialization.JSONObjectWithData(data, options: NSJSONReadingOptions.AllowFragments)
+                    
+                    guard let versionData = jsonData as? [String: AnyObject] else {
+                        self.postError(.CustomJSONParsingFailure, underlyingError: nil)
+                        return
+                    }
+                    
+                    // Print JSON results from versionData
+                    self.printMessage("Custom JSON results: \(versionData)")
+
+                    // Process Results (e.g., extract mininum and notice version from the custom json)
+                    self.processCustomVersionFileResults(versionData)
+                    
+                } catch let error as NSError {
+                    self.postError(.CustomDataRetrievalFailure, underlyingError: error)
+                }
+            }
+            
+            })
+        
+        task.resume()
+    }
+
+    private func processAppStoreVersionResults(lookupResults: [String: AnyObject]) {
         
         // Store version comparison date
         storeVersionCheckDate()
@@ -409,16 +496,57 @@ public final class Siren: NSObject {
                 appID = String(appStoreAppID)
             }
             
-            if isAppStoreVersionNewer() {
-                showAlertIfCurrentAppStoreVersionNotSkipped()
+            if let _ = customVersionFileURLPath {
+                // Use the custom version file to check
+                
+                if isAppStoreVersionNewer() {
+                    showAlertForCustomVersionFile()
+                } else {
+                    postError(.NoUpdateAvailable, underlyingError: nil)
+                }
+                
             } else {
-                postError(.NoUpdateAvailable, underlyingError: nil)
+                // Use the app store version to check
+
+                if isAppStoreVersionNewer() {
+                    showAlertIfCurrentAppStoreVersionNotSkipped()
+                } else {
+                    postError(.NoUpdateAvailable, underlyingError: nil)
+                }
+
             }
            
         } else { // lookupResults does not contain any data as the returned array is empty
             postError(.AppStoreDataRetrievalFailure, underlyingError: nil)
         }
 
+    }
+    
+    private func processCustomVersionFileResults(lookupResults: [String: AnyObject]) {
+
+        // Get the minimal version
+        if let minimalVersion = lookupResults["minimal"] as? String {
+            requiredMinimalVersion = minimalVersion
+        }
+        
+        // Get the notice version
+        if let noticeVersion = lookupResults["notice"] as? String {
+            noticeNewerFromVersion = noticeVersion
+        }
+        
+        if requiredMinimalVersion == nil && noticeNewerFromVersion == nil {
+            // If both keys were not present, do nothing
+            self.postError(.CustomDataHasNoVersions , underlyingError: nil)
+            return
+        }
+        
+        // Check the version. Continue if it needs to notify or require
+        if let alertTypeForCustom = setAlertTypeForCustomVersionFile() where alertTypeForCustom != .None {
+            alertType = alertTypeForCustom
+            
+            // Call app store to find the current app store version
+            performAppStoreRequest()
+        }
     }
 }
 
@@ -439,6 +567,13 @@ private extension Siren {
             if currentAppStoreVersion != previouslySkippedVersion {
                 showAlert()
             }
+        }
+    }
+    
+    func showAlertForCustomVersionFile() {
+        
+        if alertType != .None {
+            showAlert()
         }
     }
     
@@ -627,7 +762,45 @@ private extension Siren {
 
         return alertType
     }
+    
+    /**
+        Returns nil     if there is it no custom version file (and should use the App Store version)
+        Returns .None   if it doesn't need to show an alert (because the current version is new enough)
+        Returns .Option if the current version needs to show a notification which can be dismissed
+        Returns .Force  if the current version is older than the minimum required version
+     */
+    func setAlertTypeForCustomVersionFile() -> SirenAlertType? {
+        
+        if let _ = customVersionFileURLPath {
+            if isOlderThanRequiredMinimum() {
+                return .Force
+            }
+            if isEqualOrOlderThanNoticeVersion() {
+                return .Option
+            }
+            return .None
+        }
+        return nil
+    }
 
+    func isOlderThanRequiredMinimum() -> Bool {
+        
+        if let currentInstalledVersion = currentInstalledVersion, requiredMinimalVersion = requiredMinimalVersion {
+            // return current < minimal
+            return currentInstalledVersion.compare(requiredMinimalVersion, options: .NumericSearch) == NSComparisonResult.OrderedAscending
+        }
+        return false
+    }
+    
+    func isEqualOrOlderThanNoticeVersion() -> Bool {
+        
+        if let currentInstalledVersion = currentInstalledVersion, noticeNewerFromVersion = noticeNewerFromVersion {
+            // return current =< notice
+            return currentInstalledVersion.compare(noticeNewerFromVersion, options: .NumericSearch) != NSComparisonResult.OrderedDescending
+        }
+        return false
+    }
+    
     func hideWindow() {
         if let updaterWindow = updaterWindow {
             updaterWindow.hidden = true
@@ -722,6 +895,12 @@ private extension Siren {
             description = "Error retrieving App Store version number as results[0] does not contain a 'version' key."
         case .AppStoreAppIdFailure:
             description = "Error retrieving App ID from the App Store App as results[0] does not contain a 'trackId' key."
+        case .CustomDataRetrievalFailure:
+            description = "Error retrieving Custom JSON data as an error was returned."
+        case .CustomJSONParsingFailure:
+            description = "Error parsing Custom Version File JSON data."
+        case .CustomDataHasNoVersions:
+            description = "There were no versions found in the Cutsom Version File"
         }
 
         var userInfo: [String: AnyObject] = [NSLocalizedDescriptionKey: description]
