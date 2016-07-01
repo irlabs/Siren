@@ -16,6 +16,7 @@ public protocol SirenDelegate: class {
     func sirenUserDidLaunchAppStore()                          // User did click on button that launched App Store.app
     func sirenUserDidSkipVersion()                             // User did click on button that skips version update
     func sirenUserDidCancel()                                  // User did click on button that cancels update dialog
+    func sirenDidCheckNoUpdateNecessary()                      // Siren performed version check and did not find an update necessary
     func sirenDidFailVersionCheck(error: NSError)              // Siren failed to perform version check (may return system-level error)
     func sirenDidDetectNewVersionWithoutAlert(message: String) // Siren performed version check and did not display alert
 }
@@ -27,6 +28,7 @@ public extension SirenDelegate {
     func sirenUserDidLaunchAppStore() {}
     func sirenUserDidSkipVersion() {}
     func sirenUserDidCancel() {}
+    func sirenDidCheckNoUpdateNecessary() {}
     func sirenDidFailVersionCheck(error: NSError) {}
     func sirenDidDetectNewVersionWithoutAlert(message: String) {}
 }
@@ -117,6 +119,7 @@ private enum SirenErrorCode: Int {
     case CustomDataRetrievalFailure
     case CustomJSONParsingFailure
     case CustomDataHasNoVersions
+    case CustomNoUpdateAvailable
 }
 
 /**
@@ -502,6 +505,7 @@ public final class Siren: NSObject {
                 if isAppStoreVersionNewer() {
                     showAlertForCustomVersionFile()
                 } else {
+                    delegate?.sirenDidCheckNoUpdateNecessary()
                     postError(.NoUpdateAvailable, underlyingError: nil)
                 }
                 
@@ -511,6 +515,7 @@ public final class Siren: NSObject {
                 if isAppStoreVersionNewer() {
                     showAlertIfCurrentAppStoreVersionNotSkipped()
                 } else {
+                    delegate?.sirenDidCheckNoUpdateNecessary()
                     postError(.NoUpdateAvailable, underlyingError: nil)
                 }
 
@@ -536,7 +541,8 @@ public final class Siren: NSObject {
         
         if requiredMinimalVersion == nil && noticeNewerFromVersion == nil {
             // If both keys were not present, do nothing
-            self.postError(.CustomDataHasNoVersions , underlyingError: nil)
+            delegate?.sirenDidCheckNoUpdateNecessary()
+            self.postError(.CustomDataHasNoVersions, underlyingError: nil)
             return
         }
         
@@ -546,6 +552,10 @@ public final class Siren: NSObject {
             
             // Call app store to find the current app store version
             performAppStoreRequest()
+        } else {
+            delegate?.sirenDidCheckNoUpdateNecessary()
+            self.postError(.CustomNoUpdateAvailable, underlyingError: nil)
+            return
         }
     }
 }
@@ -764,7 +774,7 @@ private extension Siren {
     }
     
     /**
-        Returns nil     if there is it no custom version file (and should use the App Store version)
+        Returns nil     if there is no custom version file (and should use the App Store version)
         Returns .None   if it doesn't need to show an alert (because the current version is new enough)
         Returns .Option if the current version needs to show a notification which can be dismissed
         Returns .Force  if the current version is older than the minimum required version
@@ -900,7 +910,9 @@ private extension Siren {
         case .CustomJSONParsingFailure:
             description = "Error parsing Custom Version File JSON data."
         case .CustomDataHasNoVersions:
-            description = "There were no versions found in the Cutsom Version File"
+            description = "There were no versions found in the Custom Version File"
+        case .CustomNoUpdateAvailable:
+            description = "No new update necessary from the Custom Version File"
         }
 
         var userInfo: [String: AnyObject] = [NSLocalizedDescriptionKey: description]
