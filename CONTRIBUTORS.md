@@ -17,6 +17,16 @@
 - [Vahan Margaryan](https://github.com/VahanMargaryan) for [Pull Request #37](https://github.com/ArtSabintsev/Siren/pull/37)
 - [Justus Kandzi](https://github.com/jkandzi) for [Pull Request #108 (Harpy)](https://github.com/ArtSabintsev/Harpy/pull/108)
 - [Maxim-Inv](https://github.com/Maxim-Inv) for [Pull Request #40](https://github.com/ArtSabintsev/Siren/pull/40)
+- [Dirk van Oosterbosch](https://github.com/irlabs) for [Pull Request #54](https://github.com/ArtSabintsev/Siren/pull/54) and [Pull Request #55](https://github.com/ArtSabintsev/Siren/pull/55)
+- [pavankataria](https://github.com/pavankataria) for [Pull Request #63](https://github.com/ArtSabintsev/Siren/pull/63)
+- [attilat85](https://github.com/attilat85) for [Pull Request #124 (Harpy)](https://github.com/ArtSabintsev/Harpy/pull/124)
+- [Vahan Margaryan](https://github.com/VahanMargaryan) for [Pull Request #71](https://github.com/ArtSabintsev/Siren/pull/71)
+- [Josip Injic](https://github.com/jinjic) for [Pull Request #73](https://github.com/ArtSabintsev/Siren/pull/73)
+- [Thi](https://github.com/thii) for [Pull Request #78](https://github.com/ArtSabintsev/Siren/pull/78)
+- [Ilija Puaca](https://github.com/ilijapuaca) for [Pull Request #141 (Harpy)](https://github.com/ArtSabintsev/Harpy/pull/141)
+- [thii](https://github.com/ilijapuaca) for [Pull Request #83](https://github.com/ArtSabintsev/Siren/pull/83)
+- [Kristaps Grinbergs](https://github.com/fassko) for [Pull Request #90](https://github.com/ArtSabintsev/Siren/pull/90)
+
 
 ### Harpy Project Contributors
 This repo is a Swift language port of [Harpy](http://github.com/ArtSabintsev/Harpy). We couldn't have built this port without acknowledging the following developers who were instrumental in getting Harpy to v3.2.1, the version of Harpy that Siren was based on.
