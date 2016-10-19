@@ -326,7 +326,7 @@ public final class Siren: NSObject {
         
         // If the customVersionFileURLPath is provided, check that json for the version. Otherwise use the App Store
         if let customVersionFileURLPath = customVersionFileURLPath {
-            performCustomRequest(customVersionFileURLPath)
+            performCustomRequest(customVersionFileURL: customVersionFileURLPath)
         } else {
             performAppStoreRequest()
         }
@@ -397,7 +397,7 @@ public final class Siren: NSObject {
             return
         }
         
-        let request = URLRequest(URL: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60.0)
+        let request = URLRequest(url: url as URL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60.0)
         
         // Perform Request
         let session = URLSession.shared
@@ -423,7 +423,7 @@ public final class Siren: NSObject {
                     }
                     
                     // Print JSON results from versionData
-                    self.printMessage("Custom JSON results: \(versionData)")
+                    self.printMessage(message: "Custom JSON results: \(versionData)")
 
                     // Process Results (e.g., extract mininum and notice version from the custom json)
                     self.processCustomVersion(withResults: versionData)
@@ -463,15 +463,6 @@ public final class Siren: NSObject {
                 return
             }
             
-            // If the appID was not yet set, we need to get it from the App Store info
-            if appID == nil {
-                guard let appStoreAppID = results[0]["trackId"] as? Int else {
-                    self.postError(.AppStoreAppIdFailure, underlyingError: nil)
-                    return
-                }
-                appID = String(appStoreAppID)
-            }
-            
             if let _ = customVersionFileURLPath {
                 // Use the custom version file to check
                 
@@ -500,7 +491,7 @@ public final class Siren: NSObject {
 
     }
     
-    private func processCustomVersion(withResults: results: [String: AnyObject]) {
+    private func processCustomVersion(withResults results: [String: AnyObject]) {
 
         // Get the minimal version
         if let minimalVersion = results["minimal"] as? String {
@@ -520,7 +511,7 @@ public final class Siren: NSObject {
         }
         
         // Check the version. Continue if it needs to notify or require
-        if let alertTypeForCustom = setAlertTypeForCustomVersionFile() where alertTypeForCustom != .none {
+        if let alertTypeForCustom = setAlertTypeForCustomVersionFile(), alertTypeForCustom != .none {
             alertType = alertTypeForCustom
             
             // Call app store to find the current app store version
@@ -784,7 +775,7 @@ fileprivate extension Siren {
 
     func isOlderThanRequiredMinimum() -> Bool {
         
-        if let currentInstalledVersion = currentInstalledVersion, requiredMinimalVersion = requiredMinimalVersion {
+        if let currentInstalledVersion = currentInstalledVersion, let requiredMinimalVersion = requiredMinimalVersion {
             // return current < minimal
             return currentInstalledVersion.compare(requiredMinimalVersion, options: .numeric) == .orderedAscending
         }
@@ -793,7 +784,7 @@ fileprivate extension Siren {
     
     func isEqualOrOlderThanNoticeVersion() -> Bool {
         
-        if let currentInstalledVersion = currentInstalledVersion, noticeNewerFromVersion = noticeNewerFromVersion {
+        if let currentInstalledVersion = currentInstalledVersion, let noticeNewerFromVersion = noticeNewerFromVersion {
             // return current =< notice
             return currentInstalledVersion.compare(noticeNewerFromVersion, options: .numeric) != .orderedDescending
         }
